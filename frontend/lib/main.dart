@@ -7,10 +7,10 @@ import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart';
 import 'package:sensors_plus/sensors_plus.dart';
 import 'package:uuid/uuid.dart';
-import 'data/database.dart';
-import 'data/models.dart';
-import 'services/storage_service.dart';
-import 'services/validation.dart';
+import 'data/database/local_database.dart';
+import 'data/models/legacy_models.dart';
+import 'services/storage/storage_service.dart';
+import 'services/validation/metadata_validator.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();

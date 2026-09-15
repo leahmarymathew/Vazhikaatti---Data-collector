@@ -1,44 +1,43 @@
-# Vazhikatti Dataset Collector
+# Vazhikatti: Visual Campus Navigator
 
-An offline-first Flutter app for collecting campus reference imagery for **Vazhikatti: Visual Campus Navigator**.
+Offline-first campus image collection for the CSE411 Computer Vision project.
 
-## Offline contract
+## Repository architecture
 
-- No HTTP clients, API calls, Firebase, login, cloud storage, or sync are used by the app.
-- Photos are copied into the app documents directory under `VazhikattiDataset/images/<session>/`.
-- Session and capture metadata are stored in local SQLite (`vazhikatti.sqlite`).
-- A capture is rejected when required image, GPS, accuracy, heading, pitch/roll, hierarchy, node, direction, or dataset split metadata is missing.
-- GPS is recorded as rough global positioning only. Floor and node are explicitly selected and stored as ground truth.
+- `frontend/`: the preserved Flutter application, including Android, iOS, desktop targets, local SQLite, camera/sensor capture, filesystem storage, validation, and export.
+- `backend/`: isolated future FastAPI schemas and placeholder routes. The current Flutter app does not import or communicate with it.
+- `docs/`: implementation audit, migration plan, and canonical data contract.
 
-## Run on Android
+## Current version: completely offline
+
+The collector stores photos on the phone filesystem and metadata in SQLite. It has no login, Firebase, REST client, cloud storage, online synchronization, or internet requirement. GPS is global/rough positioning only; floor and node are explicit collection metadata. Missing sensor or EXIF values remain null and are never fabricated.
+
+Dataset export is a local ZIP containing `images/`, `metadata.csv`, `metadata.json`, `sessions.json`, `nodes.json`, and `README.txt`.
+
+## Flutter frontend
 
 ```powershell
+cd frontend
 flutter pub get
+flutter analyze
 flutter test
 flutter run
 ```
 
-Accept camera and location permissions on the phone. The app remains usable without internet; when sensors are unavailable it explains what must be fixed instead of fabricating values.
+Use a USB-debugging Android phone or a booted Android emulator. Camera and location permissions are requested at runtime.
 
-## Export
+## Future backend
 
-Use **Export** to create and share a local ZIP containing `images/`, `metadata.csv`, `metadata.json`, `sessions.json`, `nodes.json`, and `README.txt`. Export is the only supported way to move data out of the app.
+```powershell
+cd backend
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+uvicorn app.main:app --reload
+```
 
-## Architecture
+Health check: `GET http://127.0.0.1:8000/health`.
 
-`lib/data` owns the SQLite-facing model and repository. `lib/services` owns validation and local file/export behavior. The record is a JSON-compatible map containing current capture fields plus reserved CV and localization fields, so a future FastAPI adapter can serialize the same model without changing the capture workflow. SIFT, ORB, AKAZE, RANSAC, matching, and localization are intentionally not implemented.# vazhikatti_dataset_collector
+The backend currently provides only health, contract validation, and placeholder versioned routes. It has no CV algorithms, image processing, persistence, authentication, or Flutter integration. A future phase may connect the exact JSON export contract to FastAPI without redesigning the data model.
 
-A new Flutter project.
-
-## Getting Started
-
-This project is a starting point for a Flutter application.
-
-A few resources to get you started if this is your first Flutter project:
-
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+See [docs/IMPLEMENTATION_AUDIT.md](docs/IMPLEMENTATION_AUDIT.md), [docs/MIGRATION_PLAN.md](docs/MIGRATION_PLAN.md), and [docs/DATA_CONTRACT.md](docs/DATA_CONTRACT.md).

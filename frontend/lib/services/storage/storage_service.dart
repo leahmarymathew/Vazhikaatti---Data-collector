@@ -6,8 +6,9 @@ import 'package:csv/csv.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
-import '../data/database.dart';
-import '../data/models.dart';
+import '../../data/database/local_database.dart';
+import '../../data/models/capture_metadata.dart';
+import '../../data/models/legacy_models.dart';
 
 class StorageService {
   Future<Directory> root() async => Directory(
@@ -37,12 +38,12 @@ class StorageService {
     final archive = Archive();
     final metadata = captures
         .map(
-          (c) => {
+          (c) => CaptureMetadata.fromJson({
             ...c.metadata,
             'image_id': c.id,
             'filename': c.filename,
-            'session_id': c.sessionId,
-          },
+            'capture_session_id': c.sessionId,
+          }).toJson(),
         )
         .toList();
     archive.addFile(
@@ -60,9 +61,9 @@ class StorageService {
       ),
     );
     final rows = <List<dynamic>>[
-      metadata.isEmpty ? ['image_id'] : metadata.first.keys.toList(),
+      CaptureMetadata.fields,
       ...metadata.map(
-        (m) => (metadata.first.keys.map((key) => m[key]).toList()),
+        (m) => CaptureMetadata.fields.map((key) => m[key]).toList(),
       ),
     ];
     final csv = const ListToCsvConverter().convert(rows);

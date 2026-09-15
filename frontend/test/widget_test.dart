@@ -6,7 +6,8 @@
 // tree, read text, and verify that the values of widget properties are correct.
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:vazhikatti_dataset_collector/services/validation.dart';
+import 'package:vazhikatti_dataset_collector/data/models/capture_metadata.dart';
+import 'package:vazhikatti_dataset_collector/services/validation/metadata_validator.dart';
 
 void main() {
   test('validation blocks incomplete metadata', () {
@@ -29,5 +30,18 @@ void main() {
       'dataset_split': 'reference',
     };
     expect(MetadataValidator.isReady(data), isTrue);
+  });
+
+  test('canonical metadata round trips and preserves unknown legacy keys', () {
+    final original = CaptureMetadata.fromJson({
+      'image_id': 'image-1',
+      'ISO': 200,
+      'view_direction': 'Front',
+      'legacy_key': 'retained',
+    });
+    final restored = CaptureMetadata.fromJson(original.toJson());
+    expect(restored.toJson()['image_id'], 'image-1');
+    expect(restored.toJson()['ISO'], 200);
+    expect(restored.toJson()['legacy_key'], 'retained');
   });
 }
