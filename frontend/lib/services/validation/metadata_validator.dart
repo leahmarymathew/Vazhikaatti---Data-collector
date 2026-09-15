@@ -53,6 +53,26 @@ class MetadataValidator {
       (data['dataset_split'] as String?)?.isNotEmpty == true,
       'Choose reference, query, or test',
     ),
+    ValidationItem(
+      'Ground truth campus',
+      (data['ground_truth_campus'] as String?)?.isNotEmpty == true,
+      'Select the ground truth campus',
+    ),
+    ValidationItem(
+      'Ground truth building',
+      (data['ground_truth_building'] as String?)?.isNotEmpty == true,
+      'Select the ground truth building',
+    ),
+    ValidationItem(
+      'Ground truth floor',
+      (data['ground_truth_floor'] as String?)?.isNotEmpty == true,
+      'Select the ground truth floor',
+    ),
+    ValidationItem(
+      'Ground truth node name',
+      (data['ground_truth_node_name'] as String?)?.trim().isNotEmpty == true,
+      'Type the node/location name',
+    ),
   ];
 
   static bool isReady(Map<String, dynamic> data) =>

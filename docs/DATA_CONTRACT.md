@@ -42,9 +42,17 @@ This is the canonical field contract for Flutter local records, JSON/CSV exports
 
 `feature_method`, `keypoint_count`, `descriptor_dimension`, `descriptor_file`, `reference_image_id`, `matching_method`, `total_matches`, `good_matches`, `ratio_test_threshold`, `match_score`, `geometric_model`, `ransac_threshold`, `ransac_iterations`, `inlier_count`, `inlier_ratio`, `homography_valid`
 
+## Ground truth (collector-entered)
+
+`ground_truth_campus`, `ground_truth_building`, `ground_truth_floor`, `ground_truth_node_name` are entered explicitly by the collector on the capture screen via restricted dropdowns (campus/building/floor) and free text (node name). They are required at capture time and are distinct from the automatically captured GPS/orientation fields above.
+
+Canonical values: campus is `IIIT K`; building is one of `Old Academic Block`, `New Academic Block`, `Admin Block`, `General Pathway`; floor is one of `Basement`, `Ground`, `1`, `2`. Values are stored exactly as selected, never abbreviated.
+
 ## Future localization fields
 
-`ground_truth_building`, `ground_truth_floor`, `ground_truth_node`, `ground_truth_local_x`, `ground_truth_local_y`, `predicted_building`, `predicted_floor`, `predicted_node`, `predicted_local_x`, `predicted_local_y`, `localization_confidence`, `position_error_m`, `building_correct`, `floor_correct`, `node_correct`, `query_time_ms`
+`ground_truth_node`, `ground_truth_local_x`, `ground_truth_local_y`, `predicted_building`, `predicted_floor`, `predicted_node`, `predicted_local_x`, `predicted_local_y`, `localization_confidence`, `position_error_m`, `building_correct`, `floor_correct`, `node_correct`, `query_time_ms`
+
+These depend on the future node graph. They stay null unless populated by a future feature; the current capture UI does not collect or validate them.
 
 All fields are nullable unless required by the capture validation policy. Missing sensor/EXIF values stay null; they are never fabricated. CSV headers and JSON keys use these exact spellings, including `ISO`.
 

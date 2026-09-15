@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import 'package:sensors_plus/sensors_plus.dart';
 import 'package:uuid/uuid.dart';
 import 'data/database/local_database.dart';
+import 'data/models/ground_truth_options.dart';
 import 'data/models/legacy_models.dart';
 import 'services/storage/storage_service.dart';
 import 'services/validation/metadata_validator.dart';
@@ -302,6 +303,10 @@ class _CapturePageState extends State<CapturePage> {
   String direction = 'Front';
   String split = 'reference';
   String node = sampleNodes.first['node'] as String;
+  String groundTruthCampus = defaultGroundTruthCampus;
+  String? groundTruthBuilding;
+  String? groundTruthFloor;
+  final groundTruthNodeNameController = TextEditingController();
   bool busy = false;
   String status = 'Waiting for camera and sensors';
   @override
@@ -363,6 +368,7 @@ class _CapturePageState extends State<CapturePage> {
     locationSub?.cancel();
     compassSub?.cancel();
     motionSub?.cancel();
+    groundTruthNodeNameController.dispose();
     super.dispose();
   }
 
@@ -400,7 +406,10 @@ class _CapturePageState extends State<CapturePage> {
     'preprocessing_version': 'unprocessed',
     'feature_method': null,
     'matching_method': null,
-    'ground_truth_floor': 'Ground Floor',
+    'ground_truth_campus': groundTruthCampus,
+    'ground_truth_building': groundTruthBuilding,
+    'ground_truth_floor': groundTruthFloor,
+    'ground_truth_node_name': groundTruthNodeNameController.text.trim(),
     'predicted_floor': null,
   };
   Future<void> capture() async {
@@ -498,46 +507,140 @@ class _CapturePageState extends State<CapturePage> {
   Widget _controls() => Container(
     color: const Color(0xff142422),
     padding: const EdgeInsets.all(14),
+    child: SingleChildScrollView(
+      child: Column(
+        children: [
+          _sensorBar(),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              _menu(direction, [
+                'Front',
+                'Right',
+                'Back',
+                'Left',
+                'Custom',
+              ], (value) => setState(() => direction = value)),
+              const SizedBox(width: 8),
+              _menu(
+                node,
+                sampleNodes.map((item) => item['node'] as String).toList(),
+                (value) => setState(() => node = value),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          _groundTruthSection(),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              _menu(split, [
+                'reference',
+                'query',
+                'test',
+              ], (value) => setState(() => split = value)),
+              const Spacer(),
+              FloatingActionButton(
+                onPressed: capture,
+                child: busy
+                    ? const CircularProgressIndicator()
+                    : const Icon(Icons.camera_alt),
+              ),
+            ],
+          ),
+        ],
+      ),
+    ),
+  );
+  Widget _groundTruthSection() => Container(
+    padding: const EdgeInsets.all(10),
+    decoration: BoxDecoration(
+      color: Colors.white.withValues(alpha: 0.06),
+      borderRadius: BorderRadius.circular(8),
+    ),
     child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _sensorBar(),
-        const SizedBox(height: 10),
+        const Text(
+          'GROUND TRUTH',
+          style: TextStyle(
+            color: Colors.white60,
+            fontSize: 11,
+            fontWeight: FontWeight.bold,
+            letterSpacing: 1.0,
+          ),
+        ),
+        const SizedBox(height: 8),
         Row(
           children: [
-            _menu(direction, [
-              'Front',
-              'Right',
-              'Back',
-              'Left',
-              'Custom',
-            ], (value) => setState(() => direction = value)),
-            const SizedBox(width: 8),
-            _menu(
-              node,
-              sampleNodes.map((item) => item['node'] as String).toList(),
-              (value) => setState(() => node = value),
+            Expanded(
+              child: _groundTruthDropdown(
+                label: 'Ground Truth Campus',
+                value: groundTruthCampus,
+                options: groundTruthCampusOptions,
+                onChanged: (value) =>
+                    setState(() => groundTruthCampus = value!),
+              ),
             ),
           ],
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 8),
         Row(
           children: [
-            _menu(split, [
-              'reference',
-              'query',
-              'test',
-            ], (value) => setState(() => split = value)),
-            const Spacer(),
-            FloatingActionButton(
-              onPressed: capture,
-              child: busy
-                  ? const CircularProgressIndicator()
-                  : const Icon(Icons.camera_alt),
+            Expanded(
+              child: _groundTruthDropdown(
+                label: 'Ground Truth Building',
+                value: groundTruthBuilding,
+                hint: 'Select Building',
+                options: groundTruthBuildingOptions,
+                onChanged: (value) =>
+                    setState(() => groundTruthBuilding = value),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _groundTruthDropdown(
+                label: 'Ground Truth Floor',
+                value: groundTruthFloor,
+                hint: 'Select Floor',
+                options: groundTruthFloorOptions,
+                onChanged: (value) => setState(() => groundTruthFloor = value),
+              ),
             ),
           ],
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: groundTruthNodeNameController,
+          style: const TextStyle(color: Colors.black),
+          decoration: const InputDecoration(
+            filled: true,
+            fillColor: Colors.white,
+            labelText: 'Ground Truth Node Name',
+            hintText: 'Enter node/location name',
+          ),
         ),
       ],
     ),
+  );
+  Widget _groundTruthDropdown({
+    required String label,
+    required String? value,
+    required List<String> options,
+    required ValueChanged<String?> onChanged,
+    String? hint,
+  }) => DropdownButtonFormField<String>(
+    initialValue: value,
+    decoration: InputDecoration(
+      filled: true,
+      fillColor: Colors.white,
+      labelText: label,
+      hintText: hint,
+    ),
+    items: options
+        .map((option) => DropdownMenuItem(value: option, child: Text(option)))
+        .toList(),
+    onChanged: onChanged,
   );
   Widget _sensorBar() => Row(
     mainAxisAlignment: MainAxisAlignment.spaceBetween,

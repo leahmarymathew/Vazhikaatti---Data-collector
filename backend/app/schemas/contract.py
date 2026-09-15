@@ -95,8 +95,10 @@ class CaptureMetadata(BaseModel):
     inlier_count: int | None = None
     inlier_ratio: float | None = None
     homography_valid: bool | None = None
+    ground_truth_campus: str | None = None
     ground_truth_building: str | None = None
     ground_truth_floor: str | None = None
+    ground_truth_node_name: str | None = None
     ground_truth_node: str | None = None
     ground_truth_local_x: float | None = None
     ground_truth_local_y: float | None = None
