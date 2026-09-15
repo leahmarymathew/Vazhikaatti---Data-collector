@@ -55,3 +55,4 @@ venv/
 # Local dataset output and exports
 VazhikattiDataset/
 **/VazhikattiDataset/
+data/

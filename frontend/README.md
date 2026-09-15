@@ -4,7 +4,7 @@ An offline-first Flutter app for collecting campus reference imagery for **Vazhi
 
 ## Offline contract
 
-- No HTTP clients, API calls, Firebase, login, cloud storage, or sync are used by the app.
+- Local storage is always the source of truth. Optional HTTPS synchronization runs after local save and never blocks capture.
 - Photos are copied into the app documents directory under `VazhikattiDataset/images/<session>/`.
 - Session and capture metadata are stored in local SQLite (`vazhikatti.sqlite`).
 - A capture is rejected when required image, GPS, accuracy, heading, pitch/roll, hierarchy, node, direction, or dataset split metadata is missing.
@@ -26,9 +26,9 @@ Use **Export** to create and share a local ZIP containing `images/`, `metadata.c
 
 ## Architecture
 
-`lib/data` owns the SQLite-facing model and repository. `lib/services` owns validation and local file/export behavior. The record is a JSON-compatible map containing current capture fields plus reserved CV and localization fields, so a future FastAPI adapter can serialize the same model without changing the capture workflow. SIFT, ORB, AKAZE, RANSAC, matching, and localization are intentionally not implemented.# vazhikatti_dataset_collector
+`lib/data` owns SQLite and models. `lib/services/storage` owns local files/export, `lib/services/validation` owns capture gates, and `lib/services/api` plus `lib/services/sync` own optional synchronization. Override the endpoint with `--dart-define=API_BASE_URL=...`. Upload failure leaves the image locally with `failed` state for retry. SIFT, ORB, AKAZE, RANSAC, matching, and localization are intentionally not implemented.
 
-A new Flutter project.
+The deployed Render free instance has ephemeral filesystem storage and is development/testing infrastructure only; the phone remains the permanent dataset copy.
 
 ## Getting Started
 

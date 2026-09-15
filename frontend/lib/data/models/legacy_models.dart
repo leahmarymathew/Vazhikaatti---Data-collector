@@ -37,6 +37,12 @@ class CaptureRecord {
     required this.imagePath,
     required this.metadata,
     required this.createdAt,
+    this.syncState = 'pending',
+    this.syncAttemptCount = 0,
+    this.lastSyncAttempt,
+    this.lastSyncError,
+    this.serverImageId,
+    this.uploadedAt,
   });
   final String id;
   final String sessionId;
@@ -44,6 +50,33 @@ class CaptureRecord {
   final String imagePath;
   final Map<String, dynamic> metadata;
   final DateTime createdAt;
+  final String syncState;
+  final int syncAttemptCount;
+  final DateTime? lastSyncAttempt;
+  final String? lastSyncError;
+  final String? serverImageId;
+  final DateTime? uploadedAt;
+  CaptureRecord copyWith({
+    String? syncState,
+    int? syncAttemptCount,
+    DateTime? lastSyncAttempt,
+    String? lastSyncError,
+    String? serverImageId,
+    DateTime? uploadedAt,
+  }) => CaptureRecord(
+    id: id,
+    sessionId: sessionId,
+    filename: filename,
+    imagePath: imagePath,
+    metadata: metadata,
+    createdAt: createdAt,
+    syncState: syncState ?? this.syncState,
+    syncAttemptCount: syncAttemptCount ?? this.syncAttemptCount,
+    lastSyncAttempt: lastSyncAttempt ?? this.lastSyncAttempt,
+    lastSyncError: lastSyncError ?? this.lastSyncError,
+    serverImageId: serverImageId ?? this.serverImageId,
+    uploadedAt: uploadedAt ?? this.uploadedAt,
+  );
   Map<String, dynamic> toMap() => {
     'id': id,
     'session_id': sessionId,
@@ -51,6 +84,12 @@ class CaptureRecord {
     'image_path': imagePath,
     'metadata_json': jsonEncode(metadata),
     'created_at': createdAt.toIso8601String(),
+    'sync_state': syncState,
+    'sync_attempt_count': syncAttemptCount,
+    'last_sync_attempt': lastSyncAttempt?.toIso8601String(),
+    'last_sync_error': lastSyncError,
+    'server_image_id': serverImageId,
+    'uploaded_at': uploadedAt?.toIso8601String(),
   };
   factory CaptureRecord.fromMap(Map<String, dynamic> map) => CaptureRecord(
     id: map['id'] as String,
@@ -60,6 +99,16 @@ class CaptureRecord {
     metadata:
         jsonDecode(map['metadata_json'] as String) as Map<String, dynamic>,
     createdAt: DateTime.parse(map['created_at'] as String),
+    syncState: map['sync_state'] as String? ?? 'pending',
+    syncAttemptCount: (map['sync_attempt_count'] as num?)?.toInt() ?? 0,
+    lastSyncAttempt: map['last_sync_attempt'] == null
+        ? null
+        : DateTime.tryParse(map['last_sync_attempt'] as String),
+    lastSyncError: map['last_sync_error'] as String?,
+    serverImageId: map['server_image_id'] as String?,
+    uploadedAt: map['uploaded_at'] == null
+        ? null
+        : DateTime.tryParse(map['uploaded_at'] as String),
   );
 }
 

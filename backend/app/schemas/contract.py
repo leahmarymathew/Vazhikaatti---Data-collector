@@ -118,6 +118,14 @@ class CaptureCreate(CaptureMetadata):
 class CaptureResponse(CaptureMetadata):
     pass
 
+class UploadResponse(BaseModel):
+    success: bool
+    image_id: str
+    filename: str
+    checksum: str
+    duplicate: bool = False
+    relative_path: str | None = None
+
 class SessionCreate(BaseModel):
     id: str | None = None
     name: str

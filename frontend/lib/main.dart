@@ -11,6 +11,10 @@ import 'data/database/local_database.dart';
 import 'data/models/legacy_models.dart';
 import 'services/storage/storage_service.dart';
 import 'services/validation/metadata_validator.dart';
+import 'services/api/api_client.dart';
+import 'services/api/session_api.dart';
+import 'services/sync/sync_page.dart';
+import 'services/sync/sync_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -87,6 +91,11 @@ class _HomePageState extends State<HomePage> {
       createdAt: DateTime.now(),
     );
     await LocalDatabase.instance.saveSession(session);
+    try {
+      await SessionApi(ApiClient()).create(session);
+    } catch (_) {
+      // Local session storage remains authoritative when the server is unavailable.
+    }
     await load();
     if (mounted)
       await Navigator.push(
@@ -105,6 +114,16 @@ class _HomePageState extends State<HomePage> {
           'VAZHIKATTI',
           style: TextStyle(fontWeight: FontWeight.w800, letterSpacing: 1.4),
         ),
+        actions: [
+          IconButton(
+            tooltip: 'Synchronization',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const SyncPage()),
+            ),
+            icon: const Icon(Icons.sync),
+          ),
+        ],
       ),
       body: pages[tab],
       floatingActionButton: tab == 0
@@ -412,6 +431,7 @@ class _CapturePageState extends State<CapturePage> {
             createdAt: DateTime.now(),
           ),
         );
+        unawaited(SyncService().syncPending());
         if (mounted) setState(() => status = 'Saved $id.jpg locally');
       }
     } catch (error) {

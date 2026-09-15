@@ -1,6 +1,6 @@
-# Future FastAPI Backend
+# FastAPI Backend
 
-This backend is infrastructure for a later phase. The Flutter application is currently 100% offline and does not import, start, or communicate with this service.
+This backend is optional synchronization infrastructure. Flutter saves locally first and only then attempts HTTPS upload. Render free-tier filesystem storage is temporary; it is not the permanent dataset repository.
 
 ## Run locally
 
@@ -14,4 +14,4 @@ uvicorn app.main:app --reload
 
 Health check: `GET http://127.0.0.1:8000/health`
 
-The initial routes are structural only. CV algorithms, persistence, authentication, image upload, and Flutter integration are intentionally not implemented.
+The service provides health, session/node registration, metadata routes, and `POST /api/v1/captures/upload` for multipart image plus JSON metadata. CV algorithms, authentication, and localization remain unimplemented.
