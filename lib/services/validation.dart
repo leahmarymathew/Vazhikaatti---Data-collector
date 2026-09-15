@@ -1,0 +1,60 @@
+class ValidationItem {
+  const ValidationItem(this.label, this.valid, this.detail);
+  final String label;
+  final bool valid;
+  final String detail;
+}
+
+class MetadataValidator {
+  static List<ValidationItem> validate(Map<String, dynamic> data) => [
+    ValidationItem('Image', data['image_path'] != null, 'A photo is required'),
+    ValidationItem(
+      'GPS',
+      data['latitude'] is num && data['longitude'] is num,
+      'Wait for a valid location fix',
+    ),
+    ValidationItem(
+      'GPS accuracy',
+      data['gps_accuracy'] is num && (data['gps_accuracy'] as num) <= 30,
+      'Move outdoors or wait for accuracy <= 30 m',
+    ),
+    ValidationItem(
+      'Heading',
+      data['heading'] is num,
+      'Rotate the phone until the compass is available',
+    ),
+    ValidationItem(
+      'Pitch/Roll',
+      data['pitch'] is num && data['roll'] is num,
+      'Hold the phone steady to read orientation',
+    ),
+    ValidationItem(
+      'Building',
+      (data['building_name'] as String?)?.isNotEmpty == true,
+      'Select a building',
+    ),
+    ValidationItem(
+      'Floor',
+      (data['floor_number'] as String?)?.isNotEmpty == true,
+      'Select a floor explicitly',
+    ),
+    ValidationItem(
+      'Node',
+      (data['node_id'] as String?)?.isNotEmpty == true,
+      'Select a navigation node',
+    ),
+    ValidationItem(
+      'Capture direction',
+      (data['view_direction'] as String?)?.isNotEmpty == true,
+      'Choose Front, Right, Back, Left, or Custom',
+    ),
+    ValidationItem(
+      'Dataset type',
+      (data['dataset_split'] as String?)?.isNotEmpty == true,
+      'Choose reference, query, or test',
+    ),
+  ];
+
+  static bool isReady(Map<String, dynamic> data) =>
+      validate(data).every((item) => item.valid);
+}
