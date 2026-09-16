@@ -104,7 +104,7 @@ class StorageService {
       ),
     );
     final bytes = ZipEncoder().encode(archive);
-    await out.writeAsBytes(bytes);
+    await out.writeAsBytes(bytes!);
     return out;
   }
 
