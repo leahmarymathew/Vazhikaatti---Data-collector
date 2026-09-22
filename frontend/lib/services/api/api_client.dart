@@ -69,8 +69,9 @@ class ApiClient {
         statusCode: response.statusCode,
       );
     }
-    if (decoded is! Map<String, dynamic>)
+    if (decoded is! Map<String, dynamic>) {
       throw const ApiException('Server returned an invalid response');
+    }
     return decoded;
   }
 

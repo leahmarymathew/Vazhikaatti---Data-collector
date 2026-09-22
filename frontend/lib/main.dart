@@ -100,11 +100,12 @@ class _HomePageState extends State<HomePage> {
       // Local session storage remains authoritative when the server is unavailable.
     }
     await load();
-    if (mounted)
+    if (mounted) {
       await Navigator.push(
         context,
         MaterialPageRoute(builder: (_) => CapturePage(session: session)),
       );
+    }
     await load();
   }
 
@@ -327,10 +328,12 @@ class _CapturePageState extends State<CapturePage> {
 
   Future<void> startSensors() async {
     try {
-      if (!await Geolocator.isLocationServiceEnabled() && mounted)
+      if (!await Geolocator.isLocationServiceEnabled() && mounted) {
         setState(() => status = 'Location disabled. Enable it before capture.');
-      if (await Geolocator.checkPermission() == LocationPermission.denied)
+      }
+      if (await Geolocator.checkPermission() == LocationPermission.denied) {
         await Geolocator.requestPermission();
+      }
       position = await Geolocator.getCurrentPosition();
       locationSub =
           Geolocator.getPositionStream(
@@ -342,18 +345,22 @@ class _CapturePageState extends State<CapturePage> {
             if (mounted) setState(() => position = value);
           });
     } catch (_) {
-      if (mounted)
+      if (mounted) {
         setState(() => status = 'GPS unavailable. Wait for a location fix.');
+      }
     }
     compassSub = FlutterCompass.events?.listen((event) {
-      if (mounted) setState(() => heading = event.heading);
+      if (mounted) {
+        setState(() => heading = event.heading);
+      }
     });
     motionSub = accelerometerEventStream().listen((event) {
-      if (mounted)
+      if (mounted) {
         setState(() {
           pitch = event.x;
           roll = event.y;
         });
+      }
     });
     try {
       final cameras = await availableCameras();
@@ -367,8 +374,9 @@ class _CapturePageState extends State<CapturePage> {
         if (mounted) setState(() {});
       }
     } catch (_) {
-      if (mounted)
+      if (mounted) {
         setState(() => status = 'Camera permission or camera unavailable.');
+      }
     }
   }
 
@@ -386,7 +394,7 @@ class _CapturePageState extends State<CapturePage> {
     'image_path': path,
     'checksum': checksum,
     'timestamp': DateTime.now().toIso8601String(),
-    'gps_timestamp': position?.timestamp?.toIso8601String(),
+    'gps_timestamp': position?.timestamp.toIso8601String(),
     'latitude': position?.latitude,
     'longitude': position?.longitude,
     'altitude': position?.altitude,
@@ -939,8 +947,9 @@ class SessionGallery extends StatelessWidget {
       future: LocalDatabase.instance.captures(sessionId),
       builder: (context, snapshot) {
         final rows = snapshot.data ?? [];
-        if (rows.isEmpty)
+        if (rows.isEmpty) {
           return const Center(child: Text('No accepted captures yet.'));
+        }
         return GridView.builder(
           padding: const EdgeInsets.all(12),
           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
