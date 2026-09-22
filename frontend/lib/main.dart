@@ -5,11 +5,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_compass/flutter_compass.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart';
+import 'package:path/path.dart' as p;
 import 'package:sensors_plus/sensors_plus.dart';
 import 'package:uuid/uuid.dart';
 import 'data/database/local_database.dart';
 import 'data/models/ground_truth_options.dart';
 import 'data/models/legacy_models.dart';
+import 'services/panorama/panorama_stitcher.dart';
 import 'services/storage/storage_service.dart';
 import 'services/validation/metadata_validator.dart';
 import 'services/api/api_client.dart';
@@ -284,6 +286,11 @@ class _HomePageState extends State<HomePage> {
   );
 }
 
+const panoramaDirection = 'Panorama (8)';
+const _panoramaShots = 8;
+const _panoramaStepDegrees = 45;
+const _panoramaToleranceDegrees = 12;
+
 class CapturePage extends StatefulWidget {
   const CapturePage({super.key, required this.session});
   final CaptureSession session;
@@ -309,6 +316,9 @@ class _CapturePageState extends State<CapturePage> {
   final groundTruthNodeNameController = TextEditingController();
   bool busy = false;
   String status = 'Waiting for camera and sensors';
+  String? panoramaId;
+  double panoramaBaseHeading = 0;
+  final panoramaFrames = <CaptureRecord>[];
   @override
   void initState() {
     super.initState();
@@ -414,6 +424,7 @@ class _CapturePageState extends State<CapturePage> {
   };
   Future<void> capture() async {
     if (camera == null || !camera!.value.isInitialized || busy) return;
+    if (direction == panoramaDirection) return capturePanorama();
     setState(() => busy = true);
     try {
       final photo = await camera!.takePicture();
@@ -448,6 +459,207 @@ class _CapturePageState extends State<CapturePage> {
     } finally {
       if (mounted) setState(() => busy = false);
     }
+  }
+
+  double _relativeHeading() =>
+      ((heading! - panoramaBaseHeading) % 360 + 360) % 360;
+
+  Future<void> capturePanorama() async {
+    if (panoramaFrames.length == _panoramaShots) {
+      // All 8 frames are stored; a previous stitch failed, so retry it.
+      return stitchPanorama();
+    }
+    final index = panoramaFrames.length;
+    final target = index * _panoramaStepDegrees;
+    // Validate with the existing validator before taking the picture.
+    final invalid = MetadataValidator.validate(
+      metadata('pending', ''),
+    ).where((item) => !item.valid).toList();
+    if (index > 0 && heading != null) {
+      final diff = (_relativeHeading() - target + 540) % 360 - 180;
+      if (diff.abs() > _panoramaToleranceDegrees) {
+        invalid.add(
+          ValidationItem(
+            'Panorama angle',
+            false,
+            'Turn to $target° (now ${_relativeHeading().toStringAsFixed(0)}°) '
+                'without moving from this spot',
+          ),
+        );
+      }
+    }
+    if (invalid.isNotEmpty) {
+      if (mounted) await showValidation(invalid);
+      return;
+    }
+    setState(() => busy = true);
+    try {
+      if (index == 0) {
+        panoramaId = const Uuid().v4();
+        panoramaBaseHeading = heading!;
+      }
+      final photo = await camera!.takePicture();
+      final id = const Uuid().v4();
+      final saved = (await StorageService().saveImage(
+        File(photo.path),
+        widget.session.id,
+        id,
+      )).split('|');
+      final data = {
+        ...metadata(saved[0], saved[1]),
+        'view_angle': '$target',
+        'capture_type': 'panorama',
+        'panorama_id': panoramaId,
+        'panorama_sequence_id': panoramaId,
+        'overlap_group_id': panoramaId,
+        'frame_index': index,
+        'is_panorama_source': true,
+        'panorama_status': 'capturing',
+      };
+      final record = CaptureRecord(
+        id: id,
+        sessionId: widget.session.id,
+        filename: '$id.jpg',
+        imagePath: saved[0],
+        metadata: data,
+        createdAt: DateTime.now(),
+      );
+      await LocalDatabase.instance.saveCapture(record);
+      panoramaFrames.add(record);
+      if (panoramaFrames.length == _panoramaShots) {
+        await stitchPanorama();
+      } else if (mounted) {
+        setState(
+          () => status =
+              'Panorama ${panoramaFrames.length}/$_panoramaShots saved. '
+              'Turn to ${panoramaFrames.length * _panoramaStepDegrees}°',
+        );
+      }
+    } catch (error) {
+      if (mounted) setState(() => status = 'Capture failed: $error');
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Future<void> stitchPanorama() async {
+    if (mounted) setState(() => busy = true);
+    final output = File(
+      p.join(Directory.systemTemp.path, '${panoramaId}_panorama.jpg'),
+    );
+    try {
+      await _setPanoramaStatus('stitching');
+      final result = await PanoramaStitcher.stitch(
+        panoramaFrames.map((f) => f.imagePath).toList(),
+        output.path,
+      );
+      final id = const Uuid().v4();
+      final saved = (await StorageService().saveImage(
+        output,
+        widget.session.id,
+        id,
+      )).split('|');
+      await LocalDatabase.instance.saveCapture(
+        CaptureRecord(
+          id: id,
+          sessionId: widget.session.id,
+          filename: '$id.jpg',
+          imagePath: saved[0],
+          metadata: {
+            ...panoramaFrames.first.metadata,
+            'image_path': saved[0],
+            'checksum': saved[1],
+            'timestamp': DateTime.now().toIso8601String(),
+            'view_angle': '360',
+            'capture_type': 'panorama',
+            'frame_index': null,
+            'is_panorama_source': false,
+            'panorama_status': 'completed',
+            'image_width': result.width,
+            'image_height': result.height,
+            'feature_method': 'SIFT',
+            'descriptor_dimension': PanoramaStitcher.descriptorDimension,
+            'keypoint_count': result.keypointCount,
+            'reference_image_id': panoramaFrames.first.id,
+            'matching_method': 'BFMatcher kNN + Lowe ratio',
+            'ratio_test_threshold': PanoramaStitcher.ratioThreshold,
+            'total_matches': result.totalMatches,
+            'good_matches': result.goodMatches,
+            'geometric_model': 'homography (RANSAC)',
+            'ransac_threshold': PanoramaStitcher.ransacThreshold,
+            'inlier_count': result.inlierCount,
+            'inlier_ratio': result.inlierRatio,
+            'homography_valid': true,
+          },
+          createdAt: DateTime.now(),
+        ),
+      );
+      await _setPanoramaStatus('completed');
+      panoramaFrames.clear();
+      panoramaId = null;
+      unawaited(SyncService().syncPending());
+      if (mounted) {
+        setState(
+          () => status =
+              'Panorama saved: $id.jpg (${result.width}x${result.height}) '
+              'from $_panoramaShots images',
+        );
+      }
+    } on PanoramaStitchException catch (error) {
+      await _setPanoramaStatus('failed');
+      if (mounted) {
+        setState(
+          () => status = 'Stitching failed. Press capture to retry stitching.',
+        );
+        await showValidation([
+          ValidationItem(
+            'Panorama stitching',
+            false,
+            '$error. Your $_panoramaShots images are kept; press capture to retry.',
+          ),
+        ]);
+      }
+    } catch (error) {
+      await _setPanoramaStatus('failed');
+      if (mounted) setState(() => status = 'Stitching failed: $error');
+    } finally {
+      if (await output.exists()) await output.delete();
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  /// Updates panorama_status on the stored source frames (fresh DB rows, so
+  /// sync state written meanwhile is preserved).
+  Future<void> _setPanoramaStatus(String value) async {
+    final ids = panoramaFrames.map((f) => f.id).toSet();
+    final rows = await LocalDatabase.instance.captures(widget.session.id);
+    for (final row in rows.where((r) => ids.contains(r.id))) {
+      await LocalDatabase.instance.updateCaptureSync(
+        CaptureRecord(
+          id: row.id,
+          sessionId: row.sessionId,
+          filename: row.filename,
+          imagePath: row.imagePath,
+          metadata: {...row.metadata, 'panorama_status': value},
+          createdAt: row.createdAt,
+          syncState: row.syncState,
+          syncAttemptCount: row.syncAttemptCount,
+          lastSyncAttempt: row.lastSyncAttempt,
+          lastSyncError: row.lastSyncError,
+          serverImageId: row.serverImageId,
+          uploadedAt: row.uploadedAt,
+        ),
+      );
+    }
+  }
+
+  Future<void> _changeDirection(String value) async {
+    if (direction == panoramaDirection && panoramaFrames.isNotEmpty) {
+      await _setPanoramaStatus('incomplete');
+    }
+    panoramaFrames.clear();
+    panoramaId = null;
+    if (mounted) setState(() => direction = value);
   }
 
   Future<void> showValidation(
@@ -511,6 +723,7 @@ class _CapturePageState extends State<CapturePage> {
       child: Column(
         children: [
           _sensorBar(),
+          if (direction == panoramaDirection) _panoramaGuide(),
           const SizedBox(height: 10),
           Row(
             children: [
@@ -520,7 +733,8 @@ class _CapturePageState extends State<CapturePage> {
                 'Back',
                 'Left',
                 'Custom',
-              ], (value) => setState(() => direction = value)),
+                panoramaDirection,
+              ], _changeDirection),
               const SizedBox(width: 8),
               _menu(
                 node,
@@ -552,6 +766,27 @@ class _CapturePageState extends State<CapturePage> {
       ),
     ),
   );
+  Widget _panoramaGuide() {
+    final done = panoramaFrames.length >= _panoramaShots;
+    final target = panoramaFrames.length * _panoramaStepDegrees;
+    final now = heading == null || panoramaFrames.isEmpty
+        ? '--'
+        : '${_relativeHeading().toStringAsFixed(0)}°';
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Text(
+        done
+            ? 'Panorama: press capture to retry stitching'
+            : 'Panorama ${panoramaFrames.length + 1}/$_panoramaShots — '
+                  'face $target° (now $now)',
+        style: const TextStyle(
+          color: Colors.white,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    );
+  }
+
   Widget _groundTruthSection() => Container(
     padding: const EdgeInsets.all(10),
     decoration: BoxDecoration(
