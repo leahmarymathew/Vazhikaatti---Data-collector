@@ -4,17 +4,23 @@ import 'dart:typed_data';
 import 'package:opencv_dart/opencv_dart.dart' as cv;
 
 /// Raised when a stage of the stitching pipeline cannot produce a trustworthy
-/// result. [pair] is the 1-based index of the image pair (image `pair` and
-/// `pair + 1`) or the single image the stage failed on.
+/// result. For the single-image stages (`load`, `features`), [pair] is the
+/// 1-based index of the failing image itself. For every other stage it is the
+/// 1-based index of the image pair (image `pair` and `pair + 1`).
 class PanoramaStitchException implements Exception {
   const PanoramaStitchException(this.stage, this.message, {this.pair});
   final String stage;
   final String message;
   final int? pair;
+  static const _singleImageStages = {'load', 'features'};
   @override
-  String toString() => pair == null
-      ? '$stage: $message'
-      : '$stage (images $pair→${pair! + 1}): $message';
+  String toString() {
+    if (pair == null) return '$stage: $message';
+    final where = _singleImageStages.contains(stage)
+        ? 'image $pair'
+        : 'images $pair→${pair! + 1}';
+    return '$stage ($where): $message';
+  }
 }
 
 class PanoramaStitchResult {
@@ -76,6 +82,28 @@ PanoramaStitchResult _stitch(List<String> paths, String outputPath) {
   final sift = cv.SIFT.create(nfeatures: 4000);
   final matcher = cv.BFMatcher.create(type: cv.NORM_L2);
   final frames = <_Frame>[];
+  try {
+    return _stitchFrames(paths, outputPath, sift, matcher, frames);
+  } finally {
+    // Runs on every exit path (success or a PanoramaStitchException), so a
+    // failed/retried stitch never leaks the native Mats/keypoints/descriptors
+    // of the frames that were already prepared.
+    for (final f in frames) {
+      f.image.dispose();
+      f.mask.dispose();
+      f.keypoints.dispose();
+      f.descriptors.dispose();
+    }
+  }
+}
+
+PanoramaStitchResult _stitchFrames(
+  List<String> paths,
+  String outputPath,
+  cv.SIFT sift,
+  cv.BFMatcher matcher,
+  List<_Frame> frames,
+) {
   var keypointCount = 0;
   for (var i = 0; i < paths.length; i++) {
     final frame = _prepare(paths[i], i + 1, sift);
@@ -96,18 +124,22 @@ PanoramaStitchResult _stitch(List<String> paths, String outputPath) {
     );
     final src = <double>[], dst = <double>[];
     var good = 0;
-    for (var m = 0; m < knn.length; m++) {
-      final pairMatches = knn[m];
-      if (pairMatches.length < 2) continue;
-      totalMatches++;
-      if (pairMatches[0].distance <
-          PanoramaStitcher.ratioThreshold * pairMatches[1].distance) {
-        final a = frames[i].keypoints[pairMatches[0].queryIdx];
-        final b = frames[i - 1].keypoints[pairMatches[0].trainIdx];
-        src..add(a.x)..add(a.y);
-        dst..add(b.x)..add(b.y);
-        good++;
+    try {
+      for (var m = 0; m < knn.length; m++) {
+        final pairMatches = knn[m];
+        if (pairMatches.length < 2) continue;
+        totalMatches++;
+        if (pairMatches[0].distance <
+            PanoramaStitcher.ratioThreshold * pairMatches[1].distance) {
+          final a = frames[i].keypoints[pairMatches[0].queryIdx];
+          final b = frames[i - 1].keypoints[pairMatches[0].trainIdx];
+          src..add(a.x)..add(a.y);
+          dst..add(b.x)..add(b.y);
+          good++;
+        }
       }
+    } finally {
+      knn.dispose();
     }
     if (good < PanoramaStitcher._minGoodMatches) {
       throw PanoramaStitchException(
@@ -120,41 +152,47 @@ PanoramaStitchResult _stitch(List<String> paths, String outputPath) {
     final srcMat = cv.Mat.fromList(good, 1, cv.MatType.CV_32FC2, src);
     final dstMat = cv.Mat.fromList(good, 1, cv.MatType.CV_32FC2, dst);
     final inlierMask = cv.Mat.empty();
-    final h = cv.findHomography(
-      srcMat,
-      dstMat,
-      method: cv.RANSAC,
-      ransacReprojThreshold: PanoramaStitcher.ransacThreshold,
-      mask: inlierMask,
-    );
-    if (h.isEmpty) {
-      throw PanoramaStitchException(
-        'ransac',
-        'homography could not be estimated',
-        pair: pair,
+    try {
+      final h = cv.findHomography(
+        srcMat,
+        dstMat,
+        method: cv.RANSAC,
+        ransacReprojThreshold: PanoramaStitcher.ransacThreshold,
+        mask: inlierMask,
       );
+      try {
+        if (h.isEmpty) {
+          throw PanoramaStitchException(
+            'ransac',
+            'homography could not be estimated',
+            pair: pair,
+          );
+        }
+        final inliers = inlierMask.countNoneZero;
+        final hv = _read3x3(h);
+        if (inliers < PanoramaStitcher._minInliers ||
+            inliers / good < PanoramaStitcher._minInlierRatio) {
+          throw PanoramaStitchException(
+            'ransac',
+            'only $inliers of $good matches are geometrically consistent',
+            pair: pair,
+          );
+        }
+        final why = _degenerate(hv);
+        if (why != null) {
+          throw PanoramaStitchException('homography', why, pair: pair);
+        }
+        goodMatches += good;
+        inlierCount += inliers;
+        global.add(_mul(global[i - 1], hv));
+      } finally {
+        h.dispose();
+      }
+    } finally {
+      srcMat.dispose();
+      dstMat.dispose();
+      inlierMask.dispose();
     }
-    final inliers = inlierMask.countNoneZero;
-    final hv = _read3x3(h);
-    srcMat.dispose();
-    dstMat.dispose();
-    inlierMask.dispose();
-    h.dispose();
-    if (inliers < PanoramaStitcher._minInliers ||
-        inliers / good < PanoramaStitcher._minInlierRatio) {
-      throw PanoramaStitchException(
-        'ransac',
-        'only $inliers of $good matches are geometrically consistent',
-        pair: pair,
-      );
-    }
-    final why = _degenerate(hv);
-    if (why != null) {
-      throw PanoramaStitchException('homography', why, pair: pair);
-    }
-    goodMatches += good;
-    inlierCount += inliers;
-    global.add(_mul(global[i - 1], hv));
   }
 
   // Canvas bounds from the warped image corners.
@@ -234,11 +272,8 @@ PanoramaStitchResult _stitch(List<String> paths, String outputPath) {
   for (final mat in [acc, weights, w3, blended, result]) {
     mat.dispose();
   }
-  for (final f in frames) {
-    f.image.dispose();
-    f.mask.dispose();
-    f.descriptors.dispose();
-  }
+  // frames (image/mask/keypoints/descriptors) are disposed by the caller's
+  // finally block, on both this success path and every failure path above.
 
   // Validate the file on disk before reporting success.
   final check = cv.imread(outputPath);

@@ -734,7 +734,7 @@ class _CapturePageState extends State<CapturePage> {
                 'Left',
                 'Custom',
                 panoramaDirection,
-              ], _changeDirection),
+              ], _changeDirection, enabled: !busy),
               const SizedBox(width: 8),
               _menu(
                 node,
@@ -907,8 +907,9 @@ class _CapturePageState extends State<CapturePage> {
   Widget _menu(
     String value,
     List<String> values,
-    ValueChanged<String> onChanged,
-  ) => Expanded(
+    ValueChanged<String> onChanged, {
+    bool enabled = true,
+  }) => Expanded(
     child: DropdownButtonFormField<String>(
       initialValue: value,
       decoration: const InputDecoration(
@@ -919,9 +920,11 @@ class _CapturePageState extends State<CapturePage> {
       items: values
           .map((value) => DropdownMenuItem(value: value, child: Text(value)))
           .toList(),
-      onChanged: (value) {
-        if (value != null) onChanged(value);
-      },
+      onChanged: enabled
+          ? (value) {
+              if (value != null) onChanged(value);
+            }
+          : null,
     ),
   );
 }
